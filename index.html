@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Simulador de Depósito a Plazo</title>
+<style>
+    body {
+        font-family: 'Segoe UI', sans-serif;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        height: 100vh;
+        margin: 0;
+        background-color: #f4f4f4;
+    }
+    .contenedor {
+        display: flex;
+        gap: 1rem;
+        max-width: 900px;
+        width: 100%;
+        justify-content: center;
+        align-items: flex-start;
+    }
+    .simulador, .resultados {
+        background: white;
+        padding: 0.5rem;
+        border-radius: 8px;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+        width: 260px;
+    }
+    h2, h3 {
+        text-align: center;
+        font-size: 0.7rem;
+        margin-bottom: 0.4rem;
+    }
+    .texto-reglas {
+        font-size: 0.4rem;
+    }
+    label {
+        display: block;
+        margin-top: 0.1rem;
+        font-size: 0.6rem;
+    }
+    input[type="text"], input[type="date"] {
+        width: 50%;
+        padding: 0.3rem;
+        margin-top: 0.1rem;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+        font-size: 0.6rem;
+    }
+    button {
+        width: 50%;
+        padding: 0.4rem;
+        background: black;
+        color: white;
+        border: none;
+        border-radius: 6px;
+        font-size: 0.5rem;
+        cursor: pointer;
+        margin-top: 0.5rem;
+    }
+    table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.65rem;
+    }
+    th, td {
+        border: 1px solid #ddd;
+        padding: 0.2rem;
+        text-align: left;
+    }
+    th {
+        background-color: #000;
+        color: white;
+    }
+    .tenpo {
+        background-color: #03ff94;
+        font-weight: bold;
+    }
+    .toast {
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        background: #333;
+        color: white;
+        padding: 0.5rem 1rem;
+        border-radius: 6px;
+        opacity: 0.95;
+        font-size: 0.75rem;
+    }
+</style>
+</head>
+<body>
+<div class="contenedor">
+    <div class="simulador">
+        <h2>Simulador Depósito a Plazo</h2>
+        <form id="formSimulador" novalidate>
+            <label>Monto a invertir (CLP):</label>
+            <input type="text" id="monto" value="0" required>
+            <p class="texto-reglas">* Ingresa un valor entre $10.000 y $10.000.000</p>
+            <label>Plazo en días:</label>
+            <input type="text" id="dias" value="0" required>
+            <p class="texto-reglas">* Elige entre 7 y 365 días</p>
+            <label>Fecha de término:</label>
+            <input type="date" id="fecha">
+            <button type="submit">Simular</button>
+            <button type="button" id="limpiar">Limpiar</button>
+        </form>
+    </div>
+    <div class="resultados" id="resultados" style="display:none;">
+        <h3 id="resumen"></h3>
+        <table>
+            <thead>
+                <tr>
+                    <th>Banco</th>
+                    <th>Tasa</th>
+                    <th>Ganancia</th>
+                    <th>Total</th>
+                </tr>
+            </thead>
+            <tbody id="tablaResultados"></tbody>
+        </table>
+    </div>
+</div>
+<div id="toastContainer"></div>
+<script>
+const tasas = [
+    { banco: 'Tenpo', tasa: 0.5 },
+    { banco: 'Banco Internacional', tasa: 0.45 },
+    { banco: 'Banco Ripley', tasa: 0.45 },
+    { banco: 'Banco Consorcio', tasa: 0.45 },
+    { banco: 'BTG Pactual', tasa: 0.43 },
+    { banco: 'Banco Security', tasa: 0.42 },
+    { banco: 'Banco BICE', tasa: 0.41 },
+    { banco: 'ScotiaBank', tasa: 0.48 },
+    { banco: 'BancoEstado', tasa: 0.38 },
+    { banco: 'Banco Bci', tasa: 0.37 },
+    { banco: 'Itaú', tasa: 0.37 },
+    { banco: 'Banco Falabella', tasa: 0.34 },
+    { banco: 'Banco de Chile', tasa: 0.34 },
+    { banco: 'Santander', tasa: 0.29 }
+];
+
+const form = document.getElementById('formSimulador');
+const fechaInput = document.getElementById('fecha');
+const diasInput = document.getElementById('dias');
+const montoInput = document.getElementById('monto');
+const toastContainer = document.getElementById('toastContainer');
+const hoy = new Date();
+fechaInput.valueAsDate = hoy;
+
+function showToast(message) {
+    const toast = document.createElement('div');
+    toast.className = 'toast';
+    toast.textContent = message;
+    toastContainer.appendChild(toast);
+    setTimeout(() => toast.remove(), 3000);
+}
+
+montoInput.addEventListener('input', () => {
+    let valor = montoInput.value.replace(/\./g, '').replace(/\D/g, '');
+    if (valor) {
+        montoInput.value = parseInt(valor).toLocaleString('es-CL');
+    } else {
+        montoInput.value = '';
+    }
+});
+
+diasInput.addEventListener('input', () => {
+    const dias = parseInt(diasInput.value);
+    if (!isNaN(dias) && dias >= 0) {
+        const nuevaFecha = new Date();
+        nuevaFecha.setDate(hoy.getDate() + dias);
+        fechaInput.valueAsDate = nuevaFecha;
+    }
+});
+
+fechaInput.addEventListener('change', async () => {
+    const fechaSeleccionada = new Date(fechaInput.value);
+    const res = await fetch('https://worldtimeapi.org/api/timezone/America/Santiago');
+    const data = await res.json();
+    const fechaActual = new Date(data.datetime);
+    const diferencia = Math.ceil((fechaSeleccionada - fechaActual) / (1000 * 60 * 60 * 24));
+    if (diferencia >= 0) {
+        diasInput.value = diferencia;
+    } else {
+        showToast('La fecha seleccionada es anterior a la actual.');
+        fechaInput.valueAsDate = hoy;
+    }
+});
+
+document.getElementById('limpiar').addEventListener('click', () => {
+    montoInput.value = '0';
+    diasInput.value = '0';
+    fechaInput.valueAsDate = hoy;
+    document.getElementById('resultados').style.display = 'none';
+});
+
+form.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const monto = parseInt(montoInput.value.replace(/\./g, ''));
+    const dias = parseInt(diasInput.value);
+
+    if (isNaN(monto) || isNaN(dias)) {
+        showToast('Por favor completa todos los campos correctamente.');
+        return;
+    }
+
+    if (monto < 10000 || monto > 10000000) {
+        showToast('El monto debe ser entre 10.000 y 10.000.000 CLP.');
+        return;
+    }
+
+    if (dias < 7 || dias > 365) {
+        showToast('El plazo en días debe ser entre 7 y 365 días.');
+        return;
+    }
+
+    document.getElementById('resultados').style.display = 'block';
+    document.getElementById('resumen').innerText = `Al invertir ${monto.toLocaleString('es-CL')} CLP en ${dias} días obtienes:`;
+    const tbody = document.getElementById('tablaResultados');
+    tbody.innerHTML = '';
+    tasas.forEach(b => {
+        const ganancia = Math.round((monto * (b.tasa / 100) * dias) / 30);
+        const total = monto + ganancia;
+        const row = document.createElement('tr');
+        if (b.banco === 'Tenpo') row.classList.add('tenpo');
+        row.innerHTML = `
+            <td>${b.banco}</td>
+            <td>${b.tasa}%</td>
+            <td>${ganancia.toLocaleString('es-CL')}</td>
+            <td>${total.toLocaleString('es-CL')}</td>
+        `;
+        tbody.appendChild(row);
+    });
+});
+</script>
+</body>
+</html>
